@@ -1,0 +1,201 @@
+### SNAP Fraud Detection Demo — Dev Tools Setup
+### Paste into Kibana → Dev Tools (Elasticsearch 9.4+)
+### Cluster: gawdzilla-0d3e9e
+
+# ─────────────────────────────────────────────
+# Step 1a — snap-transactions
+# ─────────────────────────────────────────────
+PUT snap-transactions
+{
+  "settings": { "index.default_pipeline": "snap-tx-enrich" },
+  "mappings": {
+    "properties": {
+      "transaction_id":  { "type": "keyword" },
+      "@timestamp":      { "type": "date" },
+      "card_id":         { "type": "keyword" },
+      "household_id":    { "type": "keyword" },
+      "store_id":        { "type": "keyword" },
+      "amount":          { "type": "double" },
+      "cents":           { "type": "integer" },
+      "entry_method":    { "type": "keyword" },
+      "balance_after":   { "type": "double" },
+      "state":           { "type": "keyword" },
+      "geo":             { "type": "geo_point" }
+    }
+  }
+}
+
+# ─────────────────────────────────────────────
+# Step 1b — snap-stores (lookup mode for ES|QL JOIN)
+# ─────────────────────────────────────────────
+PUT snap-stores
+{
+  "settings": { "index.mode": "lookup" },
+  "mappings": {
+    "properties": {
+      "store_id":            { "type": "keyword" },
+      "name":                { "type": "text" },
+      "category":            { "type": "keyword" },
+      "geo":                 { "type": "geo_point" },
+      "authorized_date":     { "type": "date" },
+      "expected_avg_basket": { "type": "double" },
+      "state":               { "type": "keyword" }
+    }
+  }
+}
+
+# ─────────────────────────────────────────────
+# Step 1c — snap-households (lookup mode)
+# ─────────────────────────────────────────────
+PUT snap-households
+{
+  "settings": { "index.mode": "lookup" },
+  "mappings": {
+    "properties": {
+      "household_id":    { "type": "keyword" },
+      "ssn_hash":        { "type": "keyword" },
+      "state":           { "type": "keyword" },
+      "enrollment_date": { "type": "date" },
+      "monthly_benefit": { "type": "double" },
+      "reported_income": { "type": "double" },
+      "household_size":  { "type": "integer" },
+      "status":          { "type": "keyword" }
+    }
+  }
+}
+
+# ─────────────────────────────────────────────
+# Step 1d — snap-reference
+# ─────────────────────────────────────────────
+PUT snap-reference
+{
+  "mappings": {
+    "properties": {
+      "ssn_hash":        { "type": "keyword" },
+      "source":          { "type": "keyword" },
+      "state":           { "type": "keyword" },
+      "record_date":     { "type": "date" }
+    }
+  }
+}
+
+# ─────────────────────────────────────────────
+# Step 2 — Ingest pipeline (derive cents)
+# ─────────────────────────────────────────────
+PUT _ingest/pipeline/snap-tx-enrich
+{
+  "description": "Derive cents from amount for SNAP transactions",
+  "processors": [
+    {
+      "script": {
+        "source": "ctx.cents = (int)(Math.round((ctx.amount - Math.floor(ctx.amount)) * 100));"
+      }
+    }
+  ]
+}
+
+# ─────────────────────────────────────────────
+# Step 3 — Load data (run scripts/generate_data.py + bulk_load.py)
+# ─────────────────────────────────────────────
+# GET snap-transactions/_count
+# GET snap-stores/_count
+# GET snap-households/_count
+# GET snap-reference/_count
+
+# ─────────────────────────────────────────────
+# Step 4a — Same-cent trafficking
+# ─────────────────────────────────────────────
+POST /_query
+{
+  "query": """
+    FROM snap-transactions
+    | STATS total = COUNT(*), same_cent = COUNT(*) WHERE cents == 0 BY store_id
+    | EVAL pct_round = same_cent::double / total
+    | WHERE total > 50 AND pct_round > 0.6
+    | SORT pct_round DESC
+  """
+}
+
+# ─────────────────────────────────────────────
+# Step 4b — Rapid / broken-up baskets
+# ─────────────────────────────────────────────
+POST /_query
+{
+  "query": """
+    FROM snap-transactions
+    | WHERE @timestamp > NOW() - 7 days
+    | STATS tx_count = COUNT(*), total_amt = SUM(amount)
+        BY household_id, store_id, bucket = DATE_TRUNC(10 minutes, @timestamp)
+    | WHERE tx_count >= 3 AND total_amt > 100
+    | SORT total_amt DESC
+  """
+}
+
+# ─────────────────────────────────────────────
+# Step 4c — Balance depletion
+# ─────────────────────────────────────────────
+POST /_query
+{
+  "query": """
+    FROM snap-transactions
+    | WHERE balance_after < 1.0
+    | STATS drains = COUNT(*), last_seen = MAX(@timestamp) BY household_id, store_id
+    | WHERE drains >= 2
+    | SORT drains DESC
+  """
+}
+
+# ─────────────────────────────────────────────
+# Step 4d — Excessive manual entry
+# ─────────────────────────────────────────────
+POST /_query
+{
+  "query": """
+    FROM snap-transactions
+    | STATS total = COUNT(*), manual = COUNT(*) WHERE entry_method == "manual" BY store_id
+    | EVAL pct_manual = manual::double / total
+    | WHERE total > 50 AND pct_manual > 0.3
+    | SORT pct_manual DESC
+  """
+}
+
+# ─────────────────────────────────────────────
+# Step 4e — Large baskets at convenience stores
+# ─────────────────────────────────────────────
+POST /_query
+{
+  "query": """
+    FROM snap-transactions
+    | LOOKUP JOIN snap-stores ON store_id
+    | WHERE category == "convenience" AND amount > 30
+    | STATS big_baskets = COUNT(*), avg_amt = AVG(amount) BY store_id, name
+    | WHERE big_baskets > 20
+    | SORT avg_amt DESC
+  """
+}
+
+# ─────────────────────────────────────────────
+# Step 4f — Cross-state identity
+# ─────────────────────────────────────────────
+POST /_query
+{
+  "query": """
+    FROM snap-households
+    | STATS states = COUNT_DISTINCT(state), state_list = VALUES(state) BY ssn_hash
+    | WHERE states > 1
+  """
+}
+
+# ─────────────────────────────────────────────
+# Step 4g — Deceased recipient still transacting
+# ─────────────────────────────────────────────
+POST /_query
+{
+  "query": """
+    FROM snap-transactions
+    | LOOKUP JOIN snap-households ON household_id
+    | WHERE status == "deceased"
+    | STATS tx_after_death = COUNT(*), total = SUM(amount) BY household_id
+    | SORT total DESC
+  """
+}

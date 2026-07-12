@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SNAP Fraud Detection Demo</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --accent: #00bfb3;
+      --warn: #f5a623;
+      --text: #e8edf4;
+      --muted: #8b9cb3;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header {
+      padding: 3rem 2rem 2rem;
+      max-width: 960px;
+      margin: 0 auto;
+      border-bottom: 1px solid #2a3548;
+    }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .subtitle { color: var(--muted); font-size: 1.1rem; }
+    main { max-width: 960px; margin: 0 auto; padding: 2rem; }
+    h2 { font-size: 1.25rem; margin: 2rem 0 1rem; color: var(--accent); }
+    .scenarios {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid #2a3548;
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+    .card h3 { font-size: 1rem; margin-bottom: 0.5rem; }
+    .card p { color: var(--muted); font-size: 0.9rem; }
+    .card .entity {
+      margin-top: 0.75rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: var(--warn);
+    }
+    .cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin: 2rem 0;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #0f1419;
+    }
+    .btn-secondary {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .storyline { list-style: none; counter-reset: step; }
+    .storyline li {
+      counter-increment: step;
+      padding: 0.75rem 0 0.75rem 2.5rem;
+      position: relative;
+      border-bottom: 1px solid #2a3548;
+    }
+    .storyline li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      width: 1.75rem;
+      height: 1.75rem;
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      border-radius: 50%;
+      text-align: center;
+      line-height: 1.75rem;
+      font-size: 0.8rem;
+      color: var(--accent);
+    }
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SNAP Fraud Detection Demo</h1>
+    <p class="subtitle">
+      Elasticsearch + Kibana — ES|QL detections, ML anomaly detection,
+      Agent Builder, and Workflows for benefits fraud investigation.
+    </p>
+  </header>
+
+  <main>
+    <div class="cta">
+      <a class="btn btn-primary" id="agent-link" href="#">Open Agent Chat</a>
+      <a class="btn btn-secondary" id="dashboard-link" href="#">Open Dashboard</a>
+      <a class="btn btn-secondary" id="kibana-link" href="#">Open Kibana</a>
+    </div>
+
+    <h2>Fraud Scenarios (Seeded in Demo Data)</h2>
+    <div class="scenarios">
+      <div class="card">
+        <h3>Same-Cent Trafficking</h3>
+        <p>Store where 90%+ of transactions end in .00 — classic EBT trafficking signal.</p>
+        <div class="entity">Store 4471 · QuickMart #4471</div>
+      </div>
+      <div class="card">
+        <h3>Rapid Drains &amp; Broken-Up Baskets</h3>
+        <p>Benefits drained to $0 in minutes, or split into multiple txs to avoid limits.</p>
+        <div class="entity">Store 7701 · hh_basket_demo_001</div>
+      </div>
+      <div class="card">
+        <h3>Manual Entry Abuse</h3>
+        <p>Excessive card-not-present transactions at a single retailer.</p>
+        <div class="entity">Store 5102 · ~49% manual</div>
+      </div>
+      <div class="card">
+        <h3>Volume Spike (ML)</h3>
+        <p>Small grocery store transacting 10× its historical daily baseline.</p>
+        <div class="entity">Store 3890 · Neighborhood Groc</div>
+      </div>
+      <div class="card">
+        <h3>Cross-State Identity</h3>
+        <p>Same identity hash enrolled in two states simultaneously.</p>
+        <div class="entity">ssn_hash_cross_state_demo_001 · TX + FL</div>
+      </div>
+      <div class="card">
+        <h3>Deceased Still Transacting</h3>
+        <p>Household flagged deceased in reference data, still swiping benefits.</p>
+        <div class="entity">hh_deceased_demo_001 · 25 txs post-death</div>
+      </div>
+    </div>
+
+    <h2>10-Minute Demo Storyline</h2>
+    <ol class="storyline">
+      <li><strong>Open the dashboard</strong> — show the map of flagged stores and top suspicious retailers.</li>
+      <li><strong>Ask the agent:</strong> "Which stores show signs of trafficking this week?" → store 4471 surfaces.</li>
+      <li><strong>Drill in:</strong> "Why is store 4471 suspicious?" → same-cent %, transaction counts.</li>
+      <li><strong>Identity fraud:</strong> "Is anyone enrolled in two states?" → cross-state match.</li>
+      <li><strong>Recipient fraud:</strong> "Show me accounts being drained to zero." → drain households at 7701.</li>
+      <li><strong>ML layer:</strong> show anomaly swimlane for store 3890 volume spike — no hand-tuned thresholds.</li>
+      <li><strong>Automation:</strong> trigger alert → workflow creates case, enriches store + recipients, notifies investigator.</li>
+    </ol>
+
+    <h2>Agent Test Prompts</h2>
+    <ul style="color: var(--muted); padding-left: 1.25rem;">
+      <li>Which stores show signs of trafficking this week?</li>
+      <li>Why is store 4471 suspicious?</li>
+      <li>Is anyone enrolled in two states?</li>
+      <li>Show me accounts being drained to zero.</li>
+    </ul>
+  </main>
+
+  <footer>Elastic SNAP Fraud Detection Demo · Synthetic data only · No real PII</footer>
+
+  <script>
+    const KB = "https://gawdzilla-0d3e9e.kb.us-east-2.aws.elastic-cloud.com";
+    const DASHBOARD_ID = "130b4789-10ed-400f-890f-23086f5b76e8";
+    document.getElementById("kibana-link").href = KB;
+    document.getElementById("agent-link").href = KB + "/app/agent_builder/chat/snap-fraud-investigator";
+    document.getElementById("dashboard-link").href = KB + "/app/dashboards#/view/" + DASHBOARD_ID;
+  </script>
+</body>
+</html>
